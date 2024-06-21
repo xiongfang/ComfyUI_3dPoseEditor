@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js"
 
 class OpenPoseEditor {
-    constructor(node, container) {
+    constructor(app, node, container) {
         this.node = node
         this.images = node.widgets.filter(w => ['pose','depth','normal','canny'].indexOf(w.name)> -1)
 
@@ -55,7 +55,7 @@ function createOpenPoseEditor(node, inputName, inputData, app) {
                 return
             }
 
-            MutationObserver((mutationList, observer) => {
+            new MutationObserver((mutationList, observer) => {
                 if (!!parent.querySelector(selector) === exist) {
                     observer.disconnect()
                     resolve(undefined)
@@ -119,17 +119,40 @@ function createOpenPoseEditor(node, inputName, inputData, app) {
             if (data && data.cmd && data.cmd === 'openpose-3d' && data.method) {
                 const method = data.method
 
-                if ('MakeImages' === method) {
+                if ('MakeImages' === method && true === node.isMakingImages) {
                     node.openposeeditor.uploadPoseFile(data.payload)
+                    node.isMakingImages = false
                 }
             }
         }
     }
 
     const container = document.createElement('div')
-    container.id = 'comfyui-3dopenpose-editor'
+    container.id = `comfyui-${inputName.toLowerCase()}`
+    container.classList.add('comfyui-3dopenpose-editor')
 
-    node.openposeeditor = new OpenPoseEditor(node, container)
+    node.isMakingImages = false
+    const debounce = function (func, timeout = 300) {
+        let timer
+        return (...args) => {
+            clearTimeout(timer)
+            timer = setTimeout(() => { func.apply(this, args) }, timeout)
+        }
+    }
+
+    const handlerMouseUp = debounce(() => {
+        if (true === node.isMakingImages) return
+
+        node.isMakingImages = true
+        postMessage({
+            cmd: 'openpose-3d',
+            method: 'MakeImages',
+            type: 'call',
+            payload: null,
+        })
+    })
+
+    node.openposeeditor = new OpenPoseEditor(app, node, container)
     widget.openposeeditor = container
     widget.parent = node
 
@@ -139,6 +162,7 @@ function createOpenPoseEditor(node, inputName, inputData, app) {
 
     node.onRemoved = () => {
         window.removeEventListener('message', widget.handleMessage, false)
+        node.openposeeditor.iframe.contentWindow.removeEventListener('mouseup', handlerMouseUp, false)
         // When removing this node we need to remove the input from the DOM
         for (let y in node.widgets) {
             if (node.widgets[y].openposeeditor) {
@@ -162,6 +186,8 @@ function createOpenPoseEditor(node, inputName, inputData, app) {
     widget.onRemove = () => {
         window.removeEventListener('message', widget.handleMessage, false)
         widget.openposeeditor?.remove()
+
+        node.openposeeditor.iframe.contentWindow.removeEventListener('mouseup', handlerMouseUp, false)
     }
 
     node.onDrawBackground = function (ctx) {
@@ -177,7 +203,7 @@ function createOpenPoseEditor(node, inputName, inputData, app) {
         // if it goes off screen quickly, the input may not be removed
         // this shifts it off screen so it can be moved back if the node is visible.
         for (let n in app.graph._nodes) {
-            n = graph._nodes[n]
+            n = app.graph._nodes[n]
             for (let w in n.widgets) {
                 let wid = n.widgets[w]
                 if (Object.hasOwn(wid, "openposeeditor")) {
@@ -200,14 +226,7 @@ function createOpenPoseEditor(node, inputName, inputData, app) {
                 payload: null,
             })
 
-            node.openposeeditor.iframe.contentWindow.addEventListener('mouseup', function() {
-                postMessage({
-                    cmd: 'openpose-3d',
-                    method: 'MakeImages',
-                    type: 'call',
-                    payload: null,
-                })
-            }, false)
+            node.openposeeditor.iframe.contentWindow.addEventListener('mouseup', handlerMouseUp, false)
         }).catch(() => {
             console.log("[3D Pose Editor] Editor initialize failed.")
         })
@@ -223,7 +242,7 @@ app.registerExtension({
 
     async init (app) {
         const style = document.createElement("style")
-        style.innerText = `#comfyui-3dopenpose-editor iframe { border: 0 none; }`
+        style.innerText = `.comfyui-3dopenpose-editor iframe { border: 0 none; }`
         document.head.appendChild(style)
     },
 
