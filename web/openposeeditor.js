@@ -87,6 +87,7 @@ function createOpenPoseEditor(node, inputName, inputData, app) {
             const visible = app.canvas.ds.scale > 0.6 && this.type === "openposeeditor"
             const w = widgetWidth - margin * 4
             const clientRectBound = ctx.canvas.getBoundingClientRect()
+            const bcr = app.canvas.canvas.getBoundingClientRect()
             const transform = new DOMMatrix()
                 .scaleSelf(
                     clientRectBound.width / ctx.canvas.width,
@@ -96,8 +97,8 @@ function createOpenPoseEditor(node, inputName, inputData, app) {
                 .translateSelf(margin, margin + y)
 
             Object.assign(this.openposeeditor.style, {
-                left: `${transform.a * margin + transform.e}px`,
-                top: `${transform.d + transform.f + top_offset}px`,
+                left: `${transform.a + bcr.x + transform.e + margin}px`,
+                top: `${transform.d + bcr.y + transform.f}px`,
                 width: `${(w * transform.a)}px`,
                 height: `${(w * transform.d - widgetHeight - (margin * 15) * transform.d)}px`,
                 position: "absolute",
